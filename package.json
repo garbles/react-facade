@@ -1,0 +1,32 @@
+{
+  "name": "react-facade",
+  "description": "A simple library that uses Proxy and TypeScript to create a strongly typed facade for your React hooks.",
+  "version": "0.1.0",
+  "main": "build/index.js",
+  "license": "MIT",
+  "author": "Gabe Scholz",
+  "peerDependencies": {
+    "react": "^17.0.2"
+  },
+  "dependencies": {
+    "invariant": "^2.2.4"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^12.0.0",
+    "@types/invariant": "^2.2.34",
+    "@types/jest": "^26.0.23",
+    "@types/react": "^17.0.13",
+    "@types/react-dom": "^17.0.8",
+    "jest": "^27.0.6",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "ts-jest": "^27.0.3",
+    "typescript": "^4.3.5"
+  },
+  "scripts": {
+    "test": "jest",
+    "build": "tsc",
+    "clean": "rm -rf build",
+    "prepublish": "npm run test && npm run clean && npm run build"
+  }
+}

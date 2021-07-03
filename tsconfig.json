@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "incremental": true,
+    "target": "es5",
+    "module": "commonjs",
+    "lib": ["dom", "es2017"],
+    "jsx": "react",
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "build",
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true
+  },
+  "include": ["src/*.ts", "src/*.tsx"],
+  "exclude": ["src/*.test.ts", "src/*.test.tsx"]
+}

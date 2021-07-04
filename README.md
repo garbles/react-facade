@@ -1,6 +1,6 @@
 # React Facade
 
-A simple library that uses [Proxy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy) and TypeScript to create a strongly typed [facade](https://en.wikipedia.org/wiki/Facade_pattern) for your React hooks. It's dependency injection for hooks!
+An experimental library that uses [Proxy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy) and TypeScript to create a strongly typed [facade](https://en.wikipedia.org/wiki/Facade_pattern) for your React hooks. It's dependency injection for hooks!
 
 - **Dependency inversion between components and hooks:** Build components that rely on hooks which do not have a particular implementation.
 - **Works with all of your existing hooks:** Extract hooks to the top level of your program and replace them with a facade.

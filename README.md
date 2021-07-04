@@ -32,7 +32,7 @@ export function UserProfile() {
 }
 ```
 
-The developer of this component may not care about the implementation of `useCurrentUser`, but the tests sure do! If under the hood `useCurrentUser` is calling the react-redux `useSelector`, then `UserProfile` depends directly on a global Redux store. What's more, any component using `UserProvider` has also has this dependency by default. The coupling between the store and component tree is hard-coded. Yikes! And yet this is not an uncommon problem.
+The developer of this component may not care about the implementation of `useCurrentUser`, but the tests sure do! If under the hood `useCurrentUser` is calling the react-redux `useSelector`, then `UserProfile` depends directly on a global Redux store. What's more, any component using `UserProvider` also has this dependency. The coupling between the store and component tree is hard-coded by this hook. Yikes! And yet this is not an uncommon problem. 🙃
 
 Now consider the same problem where the _implementation_ can be completely ignored with dependency injection in its place. We define the same interface using `createFacade`,
 
@@ -94,7 +94,7 @@ return (
 );
 ```
 
-While in the second, we can return a stub user so long as it matches our _interface_.
+While in a test environment, we can return a stub user so long as it matches our _interface_.
 
 ```tsx
 // user-profile.test.tsx
@@ -125,6 +125,14 @@ test("some thing", () => {
 
   // ...
 });
+```
+
+We are programming toward the _interface_ and _NOT_ the _implementation_!
+
+Now consider how this might simplify testing a component that relied on this hook...
+
+```ts
+function usePostById(id: string): { loading?: boolean; error?: Error; data?: Post };
 ```
 
 ## API

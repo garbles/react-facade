@@ -1,6 +1,6 @@
 # React Facade
 
-An experimental library that uses [Proxy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy) and TypeScript to create a strongly typed [facade](https://en.wikipedia.org/wiki/Facade_pattern) for your React hooks. It's dependency injection for hooks!
+An experimental library that uses [Proxy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy) and TypeScript to create a strongly typed [facade](https://en.wikipedia.org/wiki/Facade_pattern) for your React hooks. It's explicit dependency injection for hooks!
 
 - **Dependency inversion between components and hooks:** Build components that rely on hooks which do not have a particular implementation.
 - **Works with all of your existing hooks:** Extract hooks to the top level of your program and replace them with a facade.
@@ -175,6 +175,32 @@ return (
 npm install react-facade
 ```
 
-## Limitations
+## Asked Questions
 
-It is _really_ important that this library is used with TypeScript. It's kind of a trick to use a Proxy object in place of a real implementation when calling `createFacade`, so there's really nothing stopping you for calling `hooks.useSomethingThatDoesNotExist()`. Especially bad would be destructuring `const { useSomethingThatDoesNotExist } = hooks` so that your fake hook could be used elsewhere in the program. The only thing preventing you from cheating like this is good ol' TypeScript.
+### Why not just use `jest.mock?`
+
+Mocking at the module level has the notable downside that type safety is optional. The onus is on the developer to make sure that the mock matches the real interface. While stubbing with a _static_ language is dangerous enough because it removes critical interactions between units of code, a _dynamic_ language is even worse because changes to the real implementation interface (without changes to the stub) can result in runtime type errors in production. Choosing to forgo the type check means that you might as well be writing JavaScript.
+
+### Can I use this with plain JavaScript?
+
+It's 2021, bud. Why aren't you writing TypeScript?
+
+It is _really_ important that this library is used with TypeScript. It's kind of a trick to use a Proxy object in place of a real implementation when calling `createFacade`, so there's really nothing stopping you from calling a function that does not exist. Especially bad would be destructuring so that your fake hook could be used elsewhere in the program.
+
+```js
+// hooks.ts
+
+export const { useSomethingThatDoesNotExist } = hooks;
+```
+
+```js
+// my-component.tsx
+
+import { useSomethingThatDoesNotExist } from "./hooks";
+
+const MyComponent = () => {
+  const value = useSomethingThatDoesNotExist(); // throw new Error('oopsie-doodle!')
+};
+```
+
+The only thing preventing you from cheating like this is good ol' TypeScript.

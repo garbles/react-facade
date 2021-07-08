@@ -1,10 +1,12 @@
 # React Facade
 
-An experimental library that uses [Proxy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy) and TypeScript to create a strongly typed [facade](https://en.wikipedia.org/wiki/Facade_pattern) for your React hooks. It's explicit dependency injection for hooks!
+An experimental library that uses [Proxy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy) and TypeScript to create a strongly typed [facade](https://en.wikipedia.org/wiki/Facade_pattern) for your React hooks.
 
 - **Dependency inversion between components and hooks:** Build components that rely on hooks which do not have a particular implementation.
 - **Works with all of your existing hooks:** Extract hooks to the top level of your program and replace them with a facade.
 - **Simplified component testing:** You were already testing your hooks anyway (right?), so why test them again? Focus on rendering outcomes rather than bungling around with difficult to setup test cases.
+
+This library effectively allows you to write components with placeholders for hooks. Their implementation is injected via React context so that they can be changed in between views or testing. It is dependency injection for hooks which does not require higher-order functions/Components.
 
 ## Example
 
@@ -118,9 +120,10 @@ test("some thing", () => {
   };
 
   const result = render(
-    <ImplementationProvider.Partial implementation={implementation}>
+    // What is `__UNSAFE_Partial`? See API section
+    <ImplementationProvider.__UNSAFE_Partial implementation={implementation}>
       <UserProfile />
-    </ImplementationProvider.Partial>
+    </ImplementationProvider.__UNSAFE_Partial>
   );
 
   // ...
@@ -167,7 +170,19 @@ return (
 );
 ```
 
-`ImplementationProvider<T>` also exposes a static method `ImplementationProvider.Partial` for partially implementing the interface when you don't need to implement the whole thing but still want it to typecheck (tests).
+### `ImplementationProvider<T>.Override`
+
+For partially overriding the implementation. You may use this when you want to inject different business logic into a hook but don't want to change the presentation. As long as the interface remains the same, the code will continue to work.
+
+### `ImplementationProvider<T>.__UNSAFE_Partial`
+
+For partially implementing the interface when you don't need to implement the whole thing but still want it to typecheck (tests?). For the love of God, please do not use this outside of tests...
+
+```tsx
+<ImplementationProvider.__UNSAFE_Partial implementation={partialImplementation}>
+  <UserProfile />
+</ImplementationProvider.__UNSAFE_Partial>
+```
 
 ## Installing
 
@@ -188,13 +203,13 @@ It's 2021, bud. Why aren't you writing TypeScript?
 It is _really_ important that this library is used with TypeScript. It's kind of a trick to use a Proxy object in place of a real implementation when calling `createFacade`, so there's really nothing stopping you from calling a function that does not exist. Especially bad would be destructuring so that your fake hook could be used elsewhere in the program.
 
 ```js
-// hooks.ts
+// hooks.js
 
 export const { useSomethingThatDoesNotExist } = hooks;
 ```
 
 ```js
-// my-component.tsx
+// my-component.jsx
 
 import { useSomethingThatDoesNotExist } from "./hooks";
 
@@ -204,3 +219,7 @@ const MyComponent = () => {
 ```
 
 The only thing preventing you from cheating like this is good ol' TypeScript.
+
+### Is this safe to use?
+
+Popular libraries like [`immer`](https://github.com/immerjs/immer) use the same trick of wrapping data `T` in a `Proxy` and present it as `T`, so I don't think you should be concerned. At the time of writing this, Proxy has [~96% browser support](https://caniuse.com/proxy).

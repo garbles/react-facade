@@ -1,12 +1,29 @@
 import React from "react";
 import invariant from "invariant";
-import { Facade, FacadeInterface } from "./types";
 
-export function createFacade<T extends FacadeInterface>(displayName?: string): Facade<T> {
+/**
+ * Force `this` to not be used
+ */
+type FacadeInterface = { [hookName: string]: (this: void, ...args: any[]) => any };
+
+type ImplementationProvider<T extends FacadeInterface> = React.ComponentType<{
+  implementation: T;
+  tag?: string;
+}> & {
+  __UNSAFE_Partial: React.ComponentType<{ implementation: Partial<T> }>;
+  Override: React.ComponentType<{ implementation: Partial<T>; tag: string }>;
+};
+
+export function createFacade<T extends FacadeInterface>(
+  displayName: string = "Facade"
+): [T, ImplementationProvider<T>] {
+  type TaggedImplementation = { [K in keyof T]: { use: T[K]; tags: string[] } };
+  type ContextValue = { implementation: TaggedImplementation };
+
   const providerNotFound = Symbol();
 
-  const Context = React.createContext<T | typeof providerNotFound>(providerNotFound);
-  Context.displayName = displayName ? `ImplementationProvider(${displayName})` : "ImplementationProvider";
+  const Context = React.createContext<ContextValue | typeof providerNotFound>(providerNotFound);
+  Context.displayName = `ImplementationProviderContext(${displayName})`;
 
   /**
    * Keep track of wrapped components as they are called so that they are never recreated.
@@ -24,12 +41,26 @@ export function createFacade<T extends FacadeInterface>(displayName?: string): F
        * Is there a better way to do this?
        */
       const wrapper = (...args: any[]) => {
-        const ctx = React.useContext(Context);
+        const parent = React.useContext(Context);
 
-        invariant(ctx !== providerNotFound, `Component using "${property}" must be wrapped in provider ${displayName}`);
-        invariant(property in ctx, `${displayName} does not provide a hook named "${property}"`);
+        invariant(
+          parent !== providerNotFound,
+          `Component using "${property}" must be wrapped in provider ${Context.displayName}`
+        );
 
-        return ctx[property](...args);
+        invariant(
+          property in parent.implementation,
+          `${Context.displayName} does not provide a hook named "${property}"`
+        );
+
+        const implementation = parent.implementation[property];
+
+        /**
+         * Display which tagged Providers have been used to define an implementation of this property
+         */
+        React.useDebugValue(`"${property}" implemented by ${JSON.stringify(implementation.tags)}`);
+
+        return implementation.use(...args);
       };
       const cast = wrapper as T[K];
 
@@ -45,36 +76,92 @@ export function createFacade<T extends FacadeInterface>(displayName?: string): F
     },
   });
 
-  type ImplementationProviderProps = React.PropsWithChildren<{
-    implementation: T;
-  }>;
+  const ImplementationProvider: ImplementationProvider<T> = (props) => {
+    const tag = props.tag ?? "root";
+    const parent = React.useContext(Context);
 
-  const ImplementationProvider = (props: ImplementationProviderProps) => {
     /**
-     * TODO: enforce the same keys on every render of this component
+     * Prevent the root ImplementationProvider from being nested inside of
+     * another ImplementationProvider.
      */
-    for (const key in props.implementation) {
-      if (props.implementation.hasOwnProperty(key)) {
-        const type = typeof props.implementation[key];
+    invariant(
+      parent === providerNotFound,
+      `${ImplementationProvider.displayName} should not be rendered inside of another ${ImplementationProvider.displayName}. To partially override the implementation, use ${ImplementationProvider.Override.displayName}`
+    );
+
+    const implementation = React.useMemo(() => {
+      const result = {} as TaggedImplementation;
+
+      /**
+       * TODO: enforce the same keys on every render of this component
+       */
+      for (const key in props.implementation) {
+        const use = props.implementation[key];
+
         invariant(
-          type === "function",
-          `ImplementationProvider expected "${key}" to be a function but it was a ${type}`
+          typeof use === "function",
+          `${ImplementationProvider.displayName} expected "${key}" to be a function but it was a ${typeof use}`
         );
+
+        result[key] = { use, tags: [tag] };
       }
+
+      return result;
+    }, [props.implementation]);
+
+    return <Context.Provider value={{ implementation }}>{props.children}</Context.Provider>;
+  };
+  ImplementationProvider.displayName = `ImplementationProvider(${displayName})`;
+
+  /**
+   * Used to partially override the implementation of of the parent ImplementationProvider
+   */
+  ImplementationProvider.Override = (props) => {
+    const parent = React.useContext(Context);
+
+    invariant(
+      parent !== providerNotFound,
+      `${ImplementationProvider.Override.displayName} should be wrapped in ${ImplementationProvider.displayName}`
+    );
+
+    const implementation = { ...parent.implementation };
+
+    for (const key in props.implementation) {
+      const use = props.implementation[key]!;
+
+      invariant(
+        typeof use === "function",
+        `${ImplementationProvider.Override.displayName} expected "${key}" to be a function but it was a ${typeof use}`
+      );
+
+      /**
+       * Ensure that this is already implemented.
+       */
+      invariant(
+        implementation.hasOwnProperty(key),
+        `${ImplementationProvider.Override.displayName} (tag="${props.tag}") has added "${key}" which was not previously on ${ImplementationProvider.displayName}`
+      );
+
+      /**
+       * Append the tag to the list of tags to help with debugging.
+       */
+      const tags = [...implementation[key].tags, props.tag];
+      implementation[key] = { use, tags };
     }
 
-    return <Context.Provider value={props.implementation}>{props.children}</Context.Provider>;
+    return <Context.Provider value={{ implementation }}>{props.children}</Context.Provider>;
   };
+  ImplementationProvider.Override.displayName = `ImplementationProvider.Override(${displayName})`;
 
-  type PartialImplementationProviderProps = React.PropsWithChildren<{
-    implementation: Partial<T>;
-  }>;
-
-  ImplementationProvider.Partial = (props: PartialImplementationProviderProps) => {
+  /**
+   * Used to create a partial context to reduce setup tedium in test scenarios.
+   */
+  ImplementationProvider.__UNSAFE_Partial = (props) => {
     return (
       <ImplementationProvider implementation={props.implementation as any}>{props.children}</ImplementationProvider>
     );
   };
+  ImplementationProvider.__UNSAFE_Partial.displayName = "ImplementationProvider.__UNSAFE_Partial";
 
   return [hooks, ImplementationProvider];
 }

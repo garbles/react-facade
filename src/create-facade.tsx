@@ -6,78 +6,87 @@ import invariant from "invariant";
  */
 type FacadeInterface = { [hookName: string]: (this: void, ...args: any[]) => any };
 
-type ImplementationProvider<T extends FacadeInterface> = React.ComponentType<{
-  implementation: T;
-  tag?: string;
-}> & {
-  __UNSAFE_Partial: React.ComponentType<{ implementation: Partial<T> }>;
-  Override: React.ComponentType<{ implementation: Partial<T>; tag: string }>;
+type ImplementationProvider<T extends FacadeInterface> = React.ComponentType<
+  React.PropsWithChildren<{
+    implementation: T;
+  }>
+> & {
+  __UNSAFE_Partial: React.ComponentType<React.PropsWithChildren<{ implementation: Partial<T> }>>;
 };
+
+const isBrowser = typeof window !== "undefined" && !!window.document?.createElement;
+const useSafeEffect = isBrowser ? React.useLayoutEffect : React.useEffect;
 
 export function createFacade<T extends FacadeInterface>(
   displayName: string = "Facade"
 ): [T, ImplementationProvider<T>] {
-  type TaggedImplementation = { [K in keyof T]: { use: T[K]; tags: string[] } };
-  type ContextValue = { implementation: TaggedImplementation };
-
   const providerNotFound = Symbol();
 
-  const Context = React.createContext<ContextValue | typeof providerNotFound>(providerNotFound);
+  const Context = React.createContext<T | typeof providerNotFound>(providerNotFound);
   Context.displayName = `ImplementationProviderContext(${displayName})`;
 
   /**
-   * Keep track of wrapped components as they are called so that they are never recreated.
+   * Keep track of wrapped hooks as they are called so that they always have
+   * the same reference. The hook doesn't close over the concrete implementation
+   * (because it relies on injecting through context) so it's safe to cache by name.
    */
-  const cache = {} as T;
+  const hookCache = {} as T;
 
-  const hooks: T = new Proxy<T>({} as any, {
-    get<K extends keyof T & string>(_target: T, property: K): T[K] {
-      if (property in cache) {
-        return cache[property];
+  const hooks: T = new Proxy({} as T, {
+    get<K extends keyof T & string>(_target: T, key: K): T[K] {
+      if (key in hookCache) {
+        return hookCache[key];
       }
 
-      /**
-       * This has to be done so that `hooks` can be destructured outside of a functional component.
-       * Is there a better way to do this?
-       */
-      const wrapper = (...args: any[]) => {
-        const parent = React.useContext(Context);
+      const hook = ((...args: Parameters<T[K]>): ReturnType<T[K]> => {
+        const concrete = React.useContext(Context);
+        React.useDebugValue(key);
 
         invariant(
-          parent !== providerNotFound,
-          `Component using "${property}" must be wrapped in provider ${Context.displayName}`
+          concrete !== providerNotFound,
+          `Component using "${key}" must be wrapped in provider ${Context.displayName}`
         );
 
-        invariant(
-          property in parent.implementation,
-          `${Context.displayName} does not provide a hook named "${property}"`
-        );
-
-        const implementation = parent.implementation[property];
-
-        /**
-         * Display which tagged Providers have been used to define an implementation of this property
-         */
-        React.useDebugValue(`"${property}" implemented by ${JSON.stringify(implementation.tags)}`);
-
-        return implementation.use(...args);
-      };
-      const cast = wrapper as T[K];
+        return concrete[key](...args);
+      }) as T[K];
 
       /**
        * Do this to preserve the name of the wrapped function.
        */
-      Object.defineProperty(cast, "name", { value: property, writable: false });
-      Object.freeze(cast);
+      Object.defineProperty(hook, "name", { value: key, writable: false });
+      Object.freeze(hook);
 
-      cache[property] = cast;
+      hookCache[key] = hook;
 
-      return cast;
+      return hook;
+    },
+    has() {
+      return false;
+    },
+    ownKeys() {
+      return [];
+    },
+    getOwnPropertyDescriptor() {
+      return undefined;
+    },
+    getPrototypeOf() {
+      return null;
+    },
+    preventExtensions() {
+      return true;
+    },
+    isExtensible() {
+      return false;
+    },
+    set() {
+      return false;
+    },
+    deleteProperty() {
+      return false;
     },
   });
 
   const ImplementationProvider: ImplementationProvider<T> = (props) => {
-    const tag = props.tag ?? "root";
     const parent = React.useContext(Context);
 
     /**
@@ -86,72 +95,66 @@ export function createFacade<T extends FacadeInterface>(
      */
     invariant(
       parent === providerNotFound,
-      `${ImplementationProvider.displayName} should not be rendered inside of another ${ImplementationProvider.displayName}. To partially override the implementation, use ${ImplementationProvider.Override.displayName}`
+      `${ImplementationProvider.displayName} should not be rendered inside of another ${ImplementationProvider.displayName}.`
     );
 
-    const implementation = React.useMemo(() => {
-      const result = {} as TaggedImplementation;
+    const ref = React.useRef<T>(props.implementation);
 
-      /**
-       * TODO: enforce the same keys on every render of this component
-       */
-      for (const key in props.implementation) {
-        const use = props.implementation[key];
-
-        invariant(
-          typeof use === "function",
-          `${ImplementationProvider.displayName} expected "${key}" to be a function but it was a ${typeof use}`
-        );
-
-        result[key] = { use, tags: [tag] };
-      }
-
-      return result;
+    /**
+     * Always update the ref when the value changes, but do it outside
+     * of the render loop to avoid bugs.
+     */
+    useSafeEffect(() => {
+      ref.current = props.implementation;
     }, [props.implementation]);
 
-    return <Context.Provider value={{ implementation }}>{props.children}</Context.Provider>;
+    /**
+     * Make sure that we always proxy the ref object. This is to ensure that
+     * context value is always referentially the same; thus, any components
+     * using one of these hooks will no re-render because `props.implementation`
+     * changes.
+     *
+     * It would actually be a very bad idea to swap out the actual hook mid-session, though.
+     */
+    const proxy = React.useMemo(() => {
+      return new Proxy({} as T, {
+        get<K extends keyof T & string>(_target: {}, key: K): T[K] {
+          const concrete = ref.current[key];
+
+          invariant(concrete, `${Context.displayName} does not provide a hook named "${key}"`);
+
+          return concrete;
+        },
+        has(_target: {}, key: string) {
+          return Reflect.has(ref.current, key);
+        },
+        ownKeys(_target: {}) {
+          return Reflect.ownKeys(ref.current);
+        },
+        getOwnPropertyDescriptor(_target: {}, key: string) {
+          return Reflect.getOwnPropertyDescriptor(ref.current, key);
+        },
+        getPrototypeOf() {
+          return null;
+        },
+        preventExtensions() {
+          return true;
+        },
+        isExtensible() {
+          return false;
+        },
+        set() {
+          return false;
+        },
+        deleteProperty() {
+          return false;
+        },
+      });
+    }, []);
+
+    return <Context.Provider value={proxy}>{props.children}</Context.Provider>;
   };
   ImplementationProvider.displayName = `ImplementationProvider(${displayName})`;
-
-  /**
-   * Used to partially override the implementation of of the parent ImplementationProvider
-   */
-  ImplementationProvider.Override = (props) => {
-    const parent = React.useContext(Context);
-
-    invariant(
-      parent !== providerNotFound,
-      `${ImplementationProvider.Override.displayName} should be wrapped in ${ImplementationProvider.displayName}`
-    );
-
-    const implementation = { ...parent.implementation };
-
-    for (const key in props.implementation) {
-      const use = props.implementation[key]!;
-
-      invariant(
-        typeof use === "function",
-        `${ImplementationProvider.Override.displayName} expected "${key}" to be a function but it was a ${typeof use}`
-      );
-
-      /**
-       * Ensure that this is already implemented.
-       */
-      invariant(
-        implementation.hasOwnProperty(key),
-        `${ImplementationProvider.Override.displayName} (tag="${props.tag}") has added "${key}" which was not previously on ${ImplementationProvider.displayName}`
-      );
-
-      /**
-       * Append the tag to the list of tags to help with debugging.
-       */
-      const tags = [...implementation[key].tags, props.tag];
-      implementation[key] = { use, tags };
-    }
-
-    return <Context.Provider value={{ implementation }}>{props.children}</Context.Provider>;
-  };
-  ImplementationProvider.Override.displayName = `ImplementationProvider.Override(${displayName})`;
 
   /**
    * Used to create a partial context to reduce setup tedium in test scenarios.
@@ -161,7 +164,7 @@ export function createFacade<T extends FacadeInterface>(
       <ImplementationProvider implementation={props.implementation as any}>{props.children}</ImplementationProvider>
     );
   };
-  ImplementationProvider.__UNSAFE_Partial.displayName = "ImplementationProvider.__UNSAFE_Partial";
+  ImplementationProvider.__UNSAFE_Partial.displayName = `ImplementationProvider.__UNSAFE_Partial(${displayName})`;
 
   return [hooks, ImplementationProvider];
 }

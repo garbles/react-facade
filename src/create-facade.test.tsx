@@ -119,72 +119,48 @@ test("deconstructing always returns the same reference", () => {
   expect(hooks.useCurrentUser).toBe(hooks.useCurrentUser);
 });
 
-test("ImplementationProvider.Override can override a previous implementation", () => {
+test("doesn't re-render when the implementation changes", () => {
   type IFace = {
-    useCurrentUser(): { id: string; name: string };
-    useNumber(): number;
+    useCountRenders(): void;
   };
 
   const [hooks, ImplementationProvider] = createFacade<IFace>();
 
-  const InnerComponent = () => {
-    const user = hooks.useCurrentUser();
-    const number = hooks.useNumber();
+  const Component = React.memo(() => {
+    const a = hooks.useCountRenders();
 
-    return (
-      <>
-        <div data-testid="inner-name">{user.name}</div>
-        <div data-testid="inner-number">{number}</div>
-      </>
-    );
-  };
+    return <div />;
+  });
 
-  const OuterComponent = () => {
-    const user = hooks.useCurrentUser();
-    const number = hooks.useNumber();
-
-    const innerImpl: Partial<IFace> = {
-      useCurrentUser() {
-        return {
-          id: "2",
-          name: "2",
-        };
-      },
-    };
-
-    return (
-      <>
-        <div data-testid="outer-name">{user.name}</div>
-        <div data-testid="outer-number">{number}</div>
-        <ImplementationProvider.Override implementation={innerImpl} tag="inner">
-          <InnerComponent />
-        </ImplementationProvider.Override>
-      </>
-    );
-  };
+  let renderCount = 0;
 
   const implementation = {
-    useCurrentUser() {
-      return {
-        id: "1",
-        name: "1",
-      };
-    },
-    useNumber() {
-      return 9999;
+    useCountRenders() {
+      renderCount++;
     },
   };
 
-  const { getByTestId } = render(
-    <ImplementationProvider implementation={implementation}>
-      <OuterComponent />
+  const { rerender } = render(
+    <ImplementationProvider implementation={{ ...implementation }}>
+      <Component />
     </ImplementationProvider>
   );
 
-  expect(getByTestId("outer-name").innerHTML).toEqual("1");
-  expect(getByTestId("inner-name").innerHTML).toEqual("2");
-  expect(getByTestId("outer-number").innerHTML).toEqual("9999");
-  expect(getByTestId("inner-number").innerHTML).toEqual("9999");
+  expect(renderCount).toEqual(1);
+
+  rerender(
+    <ImplementationProvider implementation={{ ...implementation }}>
+      <Component />
+    </ImplementationProvider>
+  );
+
+  rerender(
+    <ImplementationProvider implementation={{ ...implementation }}>
+      <Component />
+    </ImplementationProvider>
+  );
+
+  expect(renderCount).toEqual(1);
 });
 
 describe("errors", () => {
@@ -264,77 +240,8 @@ describe("errors", () => {
       )
     ).toThrowError(
       new Error(
-        "ImplementationProvider(NestedRoots) should not be rendered inside of another ImplementationProvider(NestedRoots). To partially override the implementation, use ImplementationProvider.Override(NestedRoots)"
+        "ImplementationProvider(NestedRoots) should not be rendered inside of another ImplementationProvider(NestedRoots)."
       )
-    );
-  });
-
-  test("throws an error if ImplementationProvider.Override is not used inside of root context", () => {
-    type IFace = {};
-
-    const [hooks, ImplementationProvider] = createFacade<IFace>("NotOuterContext");
-
-    const Component = () => {
-      return <div />;
-    };
-
-    expect(() =>
-      render(
-        <ImplementationProvider.Override implementation={{}} tag="oops">
-          <Component />
-        </ImplementationProvider.Override>
-      )
-    ).toThrowError(
-      new Error(
-        "ImplementationProvider.Override(NotOuterContext) should be wrapped in ImplementationProvider(NotOuterContext)"
-      )
-    );
-  });
-
-  test("throws an error if ImplementationProvider.Override adds a key that was not previously implemented", () => {
-    type IFace = {};
-    const [hooks, ImplementationProvider] = createFacade<IFace>("NewKeys");
-
-    expect(() =>
-      render(
-        <ImplementationProvider implementation={{}}>
-          <ImplementationProvider.Override
-            tag="inner"
-            implementation={{
-              useNewKey() {
-                return 10;
-              },
-            }}
-          />
-        </ImplementationProvider>
-      )
-    ).toThrowError(
-      new Error(
-        'ImplementationProvider.Override(NewKeys) (tag="inner") has added "useNewKey" which was not previously on ImplementationProvider(NewKeys)'
-      )
-    );
-  });
-
-  test("throws an error if member is not a function", () => {
-    type IFace = {
-      currentUser: { id: string; name: string };
-    };
-
-    const [hooks, ImplementationProvider] = createFacade<any>("NewKeys");
-
-    expect(() =>
-      render(
-        <ImplementationProvider
-          implementation={{
-            currentUser: {
-              id: "1",
-              name: "Gabe",
-            },
-          }}
-        />
-      )
-    ).toThrowError(
-      new Error('ImplementationProvider(NewKeys) expected "currentUser" to be a function but it was a object')
     );
   });
 });

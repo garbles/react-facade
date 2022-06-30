@@ -14,7 +14,7 @@ Consider an application which describes its data-fetching layer in the UI with t
 
 ```ts
 function useCurrentUser(): User;
-function usePostById(id: string): { loading?: boolean; error?: Error; data?: Post };
+function usePostById(id: string): { loading: boolean; error?: Error; data?: Post };
 function useCreateNewPost(): (postData: PostData) => Promise<Post>;
 // etc...
 ```
@@ -22,7 +22,7 @@ function useCreateNewPost(): (postData: PostData) => Promise<Post>;
 Given this interface, a developer can reliably use these hooks without knowing anything about their underlying _implementation_ (leaving aside questions of fidelity). That is to say: the developer _only_ cares about the _interface_. The problem, however, is that by inlining a hook as part of the React component, the _implementation_ cannot be ignored. For example, a component `UserProfile` may have the following definition,
 
 ```ts
-// user-profile.ts
+// user-profile.tsx
 
 import React from "react";
 import { userCurrentUser } from "./hooks";
@@ -57,7 +57,7 @@ export const [hooks, ImplementationProvider] = createFacade<Hooks>();
 And then the `UserProfile` becomes,
 
 ```ts
-// user-profile.ts
+// user-profile.tsx
 
 import React from "react";
 import { hooks } from "./facade";
@@ -96,7 +96,7 @@ return (
 );
 ```
 
-While in a test environment, we can return a stub user so long as it matches our _interface_.
+While in a test environment, we can return a stub user so long as it matches our _interface_,
 
 ```tsx
 // user-profile.test.tsx
@@ -132,10 +132,55 @@ test("some thing", () => {
 
 We are programming purely toward the _interface_ and _NOT_ the _implementation_!
 
-Now consider how this might simplify testing a component that relied on this hook...
+Again, consider how this might simplify testing a component that relied on this hook,
 
 ```ts
-function usePostById(id: string): { loading?: boolean; error?: Error; data?: Post };
+function usePostById(id: string): { loading: boolean; error?: Error; data?: Post };
+```
+
+Testing different states is simply a matter of declaratively passing in the right one,
+
+```ts
+// post.test.tsx
+
+const loadingImplementation = {
+  usePostById(id: string) {
+    return {
+      loading: true,
+    };
+  },
+};
+
+const errorImplementation = {
+  usePostById(id: string) {
+    return {
+      loading: false,
+      error: new Error("uh oh!"),
+    };
+  },
+};
+
+// ...
+
+test("shows the loading spinner", () => {
+  const result = render(
+    <ImplementationProvider.__UNSAFE_Partial implementation={loadingImplementation}>
+      <Post id={id} />
+    </ImplementationProvider.__UNSAFE_Partial>
+  );
+
+  // ...
+});
+
+test("displays an error", () => {
+  const result = render(
+    <ImplementationProvider.__UNSAFE_Partial implementation={errorImplementation}>
+      <Post id={id} />
+    </ImplementationProvider.__UNSAFE_Partial>
+  );
+
+  // ...
+});
 ```
 
 ## API
@@ -148,7 +193,7 @@ function createFacade<T>(displayName?: string): [Proxy<T>, ImplementationProvide
 
 Takes a type definition `T` - which must be an object where each member is a function - and returns the tuple of the interface `T` (via a Proxy) and an `ImplementationProvider`. The developer provides the real implementation of the interface through the Provider.
 
-The `ImplementationProvider` does not collide with other `ImplementationProvider's created by other `createFacade` calls, so you can make as many of these as you need.
+The `ImplementationProvider` does not collide with other `ImplementationProvider`s created by other `createFacade` calls, so you can make as many of these as you need.
 
 ### `ImplementationProvider<T>`
 

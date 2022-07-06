@@ -14,11 +14,6 @@ type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ i
 const isBrowser = typeof window !== "undefined" && !!window.document?.createElement;
 const useSafeEffect = isBrowser ? React.useLayoutEffect : React.useEffect;
 
-const useForceUpdate = () => {
-  const [, forceUpdate] = React.useReducer(() => [], []);
-  return forceUpdate;
-};
-
 type Options = { displayName: string; strict: boolean };
 
 /**

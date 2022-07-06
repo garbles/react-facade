@@ -11,10 +11,10 @@ type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ i
   __UNSAFE_Partial: React.ComponentType<React.PropsWithChildren<{ implementation: Partial<T> }>>;
 };
 
+type Options = { displayName: string; strict: boolean };
+
 const isBrowser = typeof window !== "undefined" && !!window.document?.createElement;
 const useSafeEffect = isBrowser ? React.useLayoutEffect : React.useEffect;
-
-type Options = { displayName: string; strict: boolean };
 
 /**
  * This function interface is present so that when a "BasicFacadeInterface" is provided,

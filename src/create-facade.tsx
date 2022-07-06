@@ -76,7 +76,7 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
           `Component using "${key}" must be wrapped in provider ${Context.displayName}`
         );
 
-        return concrete[key].apply(concrete, args);
+        return concrete[key](...args);
       };
 
       /**

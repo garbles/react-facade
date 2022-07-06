@@ -123,11 +123,6 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
     const parent = React.useContext(Context);
 
     /**
-     * `strict` it determined at `createFacade` so this value can never change.
-     */
-    const forceUpdate = strict ? () => null : useForceUpdate();
-
-    /**
      * Prevent the root ImplementationProvider from being nested inside of
      * another ImplementationProvider.
      */
@@ -136,26 +131,21 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
       `${ImplementationProvider.displayName} should not be rendered inside of another ${ImplementationProvider.displayName}.`
     );
 
-    const ref = React.useRef<T>(props.implementation);
+    const [implementation, setImplementation] = React.useState<T>(props.implementation);
 
-    /**
-     * Always update the ref when the value changes, but do it outside
-     * of the render loop to avoid bugs.
-     */
     useSafeEffect(() => {
       invariant(
-        !strict || ref.current === props.implementation,
-        `${Context.displayName} unexpectedly received a new implementation. This is not allowed in strict mode. To disable use the option "strict: false".`
+        !strict || implementation === props.implementation,
+        `${Context.displayName} unexpectedly received a new implementation. This is not allowed in strict mode. To disable this error use the option "strict: false".`
       );
 
-      ref.current = props.implementation;
-      forceUpdate();
+      setImplementation(props.implementation);
     }, [props.implementation]);
 
     const proxy = React.useMemo(() => {
       return new Proxy({} as T, {
         get<K extends keyof T & string>(_target: {}, key: K): T[K] {
-          const concrete = ref.current[key];
+          const concrete = implementation[key];
 
           invariant(concrete !== undefined, `${Context.displayName} does not provide a hook named "${key}"`);
           invariant(typeof concrete === "function", `Expected "${key}" to be a function but wasn't`);
@@ -163,13 +153,13 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
           return concrete;
         },
         has(_target: {}, key: string) {
-          return Reflect.has(ref.current, key);
+          return Reflect.has(implementation, key);
         },
         ownKeys(_target: {}) {
-          return Reflect.ownKeys(ref.current);
+          return Reflect.ownKeys(implementation);
         },
         getOwnPropertyDescriptor(_target: {}, key: string) {
-          return Reflect.getOwnPropertyDescriptor(ref.current, key);
+          return Reflect.getOwnPropertyDescriptor(implementation, key);
         },
         getPrototypeOf() {
           return null;
@@ -187,7 +177,7 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
           return false;
         },
       });
-    }, [ref.current]);
+    }, [implementation]);
 
     return <Context.Provider value={proxy}>{props.children}</Context.Provider>;
   };

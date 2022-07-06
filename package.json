@@ -6,7 +6,7 @@
   "module": "build/index.mjs",
   "types": "build/index.d.ts",
   "license": "MIT",
-  "author": "Gabe Scholz",
+  "author": "Gabe Scholz <github@gabe.pizza>",
   "files": [
     "build",
     "src",

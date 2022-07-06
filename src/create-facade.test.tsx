@@ -402,7 +402,7 @@ describe("strict mode", () => {
       );
     }).toThrowError(
       new Error(
-        'ImplementationProviderContext(Facade) unexpectedly received a new implementation. This is not allowed in strict mode. To disable use the option "strict: false".'
+        'ImplementationProviderContext(Facade) unexpectedly received a new implementation. This is not allowed in strict mode. To disable this error use the option "strict: false".'
       )
     );
   });

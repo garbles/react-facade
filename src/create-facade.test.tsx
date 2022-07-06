@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import React from "react";
 import { createFacade } from "./create-facade";
 
@@ -117,50 +117,6 @@ test("deconstructing always returns the same reference", () => {
   const [hooks] = createFacade<IFace>();
 
   expect(hooks.useCurrentUser).toBe(hooks.useCurrentUser);
-});
-
-test("doesn't re-render when the implementation changes", () => {
-  type IFace = {
-    useCountRenders(): void;
-  };
-
-  const [hooks, ImplementationProvider] = createFacade<IFace>();
-
-  const Component = React.memo(() => {
-    const a = hooks.useCountRenders();
-
-    return <div />;
-  });
-
-  let renderCount = 0;
-
-  const implementation = {
-    useCountRenders() {
-      renderCount++;
-    },
-  };
-
-  const { rerender } = render(
-    <ImplementationProvider implementation={{ ...implementation }}>
-      <Component />
-    </ImplementationProvider>
-  );
-
-  expect(renderCount).toEqual(1);
-
-  rerender(
-    <ImplementationProvider implementation={{ ...implementation }}>
-      <Component />
-    </ImplementationProvider>
-  );
-
-  rerender(
-    <ImplementationProvider implementation={{ ...implementation }}>
-      <Component />
-    </ImplementationProvider>
-  );
-
-  expect(renderCount).toEqual(1);
 });
 
 describe("errors", () => {
@@ -354,4 +310,52 @@ test("hooks can reference other hooks in the implementation", () => {
   );
 
   expect(getByTestId("id").textContent).toEqual("12345");
+});
+
+test("can swap out implementation", async () => {
+  type IFace = {
+    useAddThree(a: number, b: number, c: number): number;
+  };
+
+  const [hooks, Provider] = createFacade<IFace>();
+
+  let count = 0;
+
+  const Component = () => {
+    const amount = hooks.useAddThree(1, 3, 5);
+
+    return (
+      <>
+        <div data-testid="amount">{amount}</div>
+      </>
+    );
+  };
+
+  const implementationA: IFace = {
+    useAddThree(a, b, c) {
+      return React.useMemo(() => a + b + c, [a, b, c, "add"]);
+    },
+  };
+
+  const { getByTestId, rerender } = render(
+    <Provider implementation={implementationA}>
+      <Component />
+    </Provider>
+  );
+
+  expect(getByTestId("amount").textContent).toEqual("9");
+
+  const implementationB: IFace = {
+    useAddThree(a, b, c) {
+      return React.useMemo(() => a * b * c, [a, b, c, "multiply"]);
+    },
+  };
+
+  rerender(
+    <Provider implementation={implementationB}>
+      <Component />
+    </Provider>
+  );
+
+  expect(getByTestId("amount").textContent).toEqual("15");
 });

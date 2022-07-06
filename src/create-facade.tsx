@@ -14,6 +14,11 @@ type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ i
 const isBrowser = typeof window !== "undefined" && !!window.document?.createElement;
 const useSafeEffect = isBrowser ? React.useLayoutEffect : React.useEffect;
 
+const useForceUpdate = () => {
+  const [, forceUpdate] = React.useReducer(() => [], []);
+  return forceUpdate;
+};
+
 /**
  * This function interface is present so that when a "BasicFacadeInterface" is provided,
  * the resulting hook object will be typed as `Readonly<T>` which is much easier to read
@@ -64,6 +69,7 @@ export function createFacade(displayName: string = "Facade"): [Readonly<{}>, Imp
 
       const hook = (...args: Parameters<T[K]>): ReturnType<T[K]> => {
         const concrete = React.useContext(Context);
+
         React.useDebugValue(key);
 
         invariant(
@@ -78,7 +84,6 @@ export function createFacade(displayName: string = "Facade"): [Readonly<{}>, Imp
        * Do this to preserve the name of the wrapped function.
        */
       Object.defineProperty(hook, "name", { value: key, writable: false });
-      Object.freeze(hook);
 
       hookCache[key] = hook;
 
@@ -112,6 +117,7 @@ export function createFacade(displayName: string = "Facade"): [Readonly<{}>, Imp
 
   const ImplementationProvider: ImplementationProvider<T> = (props) => {
     const parent = React.useContext(Context);
+    const forceUpdate = useForceUpdate();
 
     /**
      * Prevent the root ImplementationProvider from being nested inside of
@@ -130,16 +136,9 @@ export function createFacade(displayName: string = "Facade"): [Readonly<{}>, Imp
      */
     useSafeEffect(() => {
       ref.current = props.implementation;
+      forceUpdate();
     }, [props.implementation]);
 
-    /**
-     * Make sure that we always proxy the ref object. This is to ensure that
-     * context value is always referentially the same; thus, any components
-     * using one of these hooks will no re-render because `props.implementation`
-     * changes.
-     *
-     * It would actually be a very bad idea to swap out the actual hook mid-session, though.
-     */
     const proxy = React.useMemo(() => {
       return new Proxy({} as T, {
         get<K extends keyof T & string>(_target: {}, key: K): T[K] {
@@ -175,7 +174,7 @@ export function createFacade(displayName: string = "Facade"): [Readonly<{}>, Imp
           return false;
         },
       });
-    }, []);
+    }, [ref.current]);
 
     return <Context.Provider value={proxy}>{props.children}</Context.Provider>;
   };

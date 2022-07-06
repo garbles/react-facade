@@ -1,4 +1,5 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { test, describe, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, render } from "@testing-library/react";
 import React from "react";
 import { createFacade } from "./create-facade";
 
@@ -43,7 +44,7 @@ test("creates a implementation", () => {
 });
 
 test("implementations can be hooks", () => {
-  jest.useFakeTimers();
+  vi.useFakeTimers();
 
   type IFace = {
     useCounter(interval: number): number;
@@ -83,7 +84,7 @@ test("implementations can be hooks", () => {
   expect(getByTestId("count").innerHTML).toEqual("0");
 
   act(() => {
-    jest.advanceTimersByTime(3000);
+    vi.advanceTimersByTime(3000);
   });
 
   expect(getByTestId("count").innerHTML).toEqual("30");
@@ -124,7 +125,7 @@ describe("errors", () => {
 
   beforeEach(() => {
     error = console.error;
-    console.error = jest.fn();
+    console.error = vi.fn();
   });
 
   afterEach(() => {

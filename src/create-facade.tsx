@@ -157,7 +157,7 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
           return Reflect.getOwnPropertyDescriptor(implementation, key);
         },
         getPrototypeOf() {
-          return null;
+          return Reflect.getPrototypeOf(implementation);
         },
         preventExtensions() {
           return true;

@@ -1,7 +1,7 @@
 {
   "name": "react-facade",
   "description": "A simple library that uses Proxy and TypeScript to create a strongly typed facade for your React hooks.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "main": "build/index.js",
   "module": "build/index.mjs",
   "types": "build/index.d.ts",

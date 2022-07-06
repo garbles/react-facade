@@ -245,3 +245,113 @@ describe("errors", () => {
     );
   });
 });
+
+test("allows interfaces as types for create facade as well", () => {
+  interface AInterface {
+    useX(): number;
+  }
+
+  interface BInterface {
+    useA: number;
+    useB(): number;
+    useC(): string;
+  }
+
+  type CInterface = {
+    useD: number;
+    useE(): number;
+  };
+
+  const [hooksA] = createFacade<AInterface>();
+  const [hooksB] = createFacade<BInterface>();
+  const [hooksC, Provider] = createFacade<CInterface>();
+
+  // @ts-expect-error
+  const hook = hooksB.useA;
+
+  // @ts-expect-error;
+  const hook2 = hooksC.useD;
+
+  /**
+   * The inner proxy object throws an error here.
+   */
+
+  const Component = () => {
+    hook2();
+
+    return null;
+  };
+
+  const implementationA = {
+    useE() {
+      return 12;
+    },
+  };
+
+  const implementationB = {
+    useD: 400,
+    useE() {
+      return 12;
+    },
+  };
+
+  expect(() =>
+    render(
+      <Provider implementation={implementationA}>
+        <Component />
+      </Provider>
+    )
+  ).toThrowError(new Error('ImplementationProviderContext(Facade) does not provide a hook named "useD"'));
+
+  expect(() =>
+    render(
+      <Provider implementation={implementationB}>
+        <Component />
+      </Provider>
+    )
+  ).toThrowError(new Error('Expected "useD" to be a function but wasn\'t'));
+
+  // @ts-expect-error
+  createFacade<string>();
+});
+
+test("hooks can reference other hooks in the implementation", () => {
+  type IFace = {
+    useCurrentUser(): { id: string; name: string };
+    useUserId(): string;
+  };
+
+  const [hooks, Provider] = createFacade<IFace>();
+
+  const Component = () => {
+    const userId = hooks.useUserId();
+
+    return (
+      <>
+        <div data-testid="id">{userId}</div>
+      </>
+    );
+  };
+
+  const implementation = {
+    useCurrentUser() {
+      return {
+        id: "12345",
+        name: "Gabe",
+      };
+    },
+
+    useUserId() {
+      const user = this.useCurrentUser();
+      return user.id;
+    },
+  };
+
+  const { getByTestId } = render(
+    <Provider implementation={implementation}>
+      <Component />
+    </Provider>
+  );
+
+  expect(getByTestId("id").textContent).toEqual("12345");
+});

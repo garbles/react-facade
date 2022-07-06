@@ -19,13 +19,15 @@ const useForceUpdate = () => {
   return forceUpdate;
 };
 
+type Options = { displayName: string; strict: boolean };
+
 /**
  * This function interface is present so that when a "BasicFacadeInterface" is provided,
  * the resulting hook object will be typed as `Readonly<T>` which is much easier to read
  * than something with `Pick` (see below).
  */
 export function createFacade<T extends BasicFacadeInterface>(
-  displayName?: string
+  options?: Partial<Options>
 ): [Readonly<T>, ImplementationProvider<T>];
 
 /**
@@ -39,16 +41,18 @@ export function createFacade<T extends BasicFacadeInterface>(
  * functions as values? `T extends BasicFacadeInterface` does not work.
  */
 export function createFacade<T extends object>(
-  displayName?: string
+  options?: Partial<Options>
 ): [Readonly<FilterNonFuncs<T>>, ImplementationProvider<FilterNonFuncs<T>>];
 
 /**
  * If we don't provide a `T`, then fallback to an empty interface.
  * You might be missing the point, if you fell into this function signature.
  */
-export function createFacade(displayName: string = "Facade"): [Readonly<{}>, ImplementationProvider<{}>] {
+export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, ImplementationProvider<{}>] {
   type T = BasicFacadeInterface;
 
+  const displayName = options.displayName ?? "Facade";
+  const strict = options.strict ?? true;
   const providerNotFound = Symbol();
 
   const Context = React.createContext<BasicFacadeInterface | typeof providerNotFound>(providerNotFound);
@@ -117,7 +121,11 @@ export function createFacade(displayName: string = "Facade"): [Readonly<{}>, Imp
 
   const ImplementationProvider: ImplementationProvider<T> = (props) => {
     const parent = React.useContext(Context);
-    const forceUpdate = useForceUpdate();
+
+    /**
+     * `strict` it determined at `createFacade` so this value can never change.
+     */
+    const forceUpdate = strict ? () => null : useForceUpdate();
 
     /**
      * Prevent the root ImplementationProvider from being nested inside of
@@ -135,6 +143,11 @@ export function createFacade(displayName: string = "Facade"): [Readonly<{}>, Imp
      * of the render loop to avoid bugs.
      */
     useSafeEffect(() => {
+      invariant(
+        !strict || ref.current === props.implementation,
+        `${Context.displayName} unexpectedly received a new implementation. This is not allowed in strict mode. To disable use the option "strict: false".`
+      );
+
       ref.current = props.implementation;
       forceUpdate();
     }, [props.implementation]);

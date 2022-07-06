@@ -188,12 +188,21 @@ test("displays an error", () => {
 ### `createFacade`
 
 ```ts
-function createFacade<T>(displayName?: string): [Proxy<T>, ImplementationProvider<T>];
+function createFacade<T>(
+  options?: Partial<{ displayName: string; strict: boolean }>
+): [Proxy<T>, ImplementationProvider<T>];
 ```
 
 Takes a type definition `T` - which must be an object where each member is a function - and returns the tuple of the interface `T` (via a Proxy) and an `ImplementationProvider`. The developer provides the real implementation of the interface through the Provider.
 
 The `ImplementationProvider` does not collide with other `ImplementationProvider`s created by other `createFacade` calls, so you can make as many of these as you need.
+
+#### Options
+
+| option      | type    | default  | details                                                                 |
+| ----------- | ------- | -------- | ----------------------------------------------------------------------- |
+| displayName | string  | "Facade" | The displayName for debugging with React Devtools                       |
+| strict      | boolean | true     | When `true` does not allow the implementation to change between renders |
 
 ### `ImplementationProvider<T>`
 

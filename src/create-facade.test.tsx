@@ -136,7 +136,7 @@ describe("errors", () => {
       useCurrentUser(): { id: string; name: string };
     };
 
-    const [hooks] = createFacade<IFace>("Oopsie");
+    const [hooks] = createFacade<IFace>({ displayName: "Oopsie" });
 
     const Component = () => {
       const user = hooks.useCurrentUser();
@@ -159,7 +159,7 @@ describe("errors", () => {
       useCurrentUser(): { id: string; name: string };
     };
 
-    const [hooks, ImplementationProvider] = createFacade<IFace>("Oopsie");
+    const [hooks, ImplementationProvider] = createFacade<IFace>({ displayName: "Oopsie" });
 
     const Component = () => {
       const user = hooks.useCurrentUser();
@@ -186,7 +186,7 @@ describe("errors", () => {
   test("throws an error if ImplementationProvider is inside another ImplementationProvider", () => {
     type IFace = {};
 
-    const [hooks, ImplementationProvider] = createFacade<IFace>("NestedRoots");
+    const [hooks, ImplementationProvider] = createFacade<IFace>({ displayName: "NestedRoots" });
 
     expect(() =>
       render(
@@ -312,50 +312,98 @@ test("hooks can reference other hooks in the implementation", () => {
   expect(getByTestId("id").textContent).toEqual("12345");
 });
 
-test("can swap out implementation", async () => {
-  type IFace = {
-    useAddThree(a: number, b: number, c: number): number;
-  };
+describe("strict mode", () => {
+  test("can swap out implementation when strict mode is false", async () => {
+    type IFace = {
+      useAddThree(a: number, b: number, c: number): number;
+    };
 
-  const [hooks, Provider] = createFacade<IFace>();
+    const [hooks, Provider] = createFacade<IFace>({ strict: false });
 
-  let count = 0;
+    const Component = () => {
+      const amount = hooks.useAddThree(1, 3, 5);
 
-  const Component = () => {
-    const amount = hooks.useAddThree(1, 3, 5);
+      return (
+        <>
+          <div data-testid="amount">{amount}</div>
+        </>
+      );
+    };
 
-    return (
-      <>
-        <div data-testid="amount">{amount}</div>
-      </>
+    const implementationA: IFace = {
+      useAddThree(a, b, c) {
+        return React.useMemo(() => a + b + c, [a, b, c, "add"]);
+      },
+    };
+
+    const { getByTestId, rerender } = render(
+      <Provider implementation={implementationA}>
+        <Component />
+      </Provider>
     );
-  };
 
-  const implementationA: IFace = {
-    useAddThree(a, b, c) {
-      return React.useMemo(() => a + b + c, [a, b, c, "add"]);
-    },
-  };
+    expect(getByTestId("amount").textContent).toEqual("9");
 
-  const { getByTestId, rerender } = render(
-    <Provider implementation={implementationA}>
-      <Component />
-    </Provider>
-  );
+    const implementationB: IFace = {
+      useAddThree(a, b, c) {
+        return React.useMemo(() => a * b * c, [a, b, c, "multiply"]);
+      },
+    };
 
-  expect(getByTestId("amount").textContent).toEqual("9");
+    rerender(
+      <Provider implementation={implementationB}>
+        <Component />
+      </Provider>
+    );
 
-  const implementationB: IFace = {
-    useAddThree(a, b, c) {
-      return React.useMemo(() => a * b * c, [a, b, c, "multiply"]);
-    },
-  };
+    expect(getByTestId("amount").textContent).toEqual("15");
+  });
 
-  rerender(
-    <Provider implementation={implementationB}>
-      <Component />
-    </Provider>
-  );
+  test("can't swap out implementation when strict mode is true", async () => {
+    type IFace = {
+      useAddThree(a: number, b: number, c: number): number;
+    };
 
-  expect(getByTestId("amount").textContent).toEqual("15");
+    const [hooks, Provider] = createFacade<IFace>({ strict: true });
+
+    const Component = () => {
+      const amount = hooks.useAddThree(1, 3, 5);
+
+      return (
+        <>
+          <div data-testid="amount">{amount}</div>
+        </>
+      );
+    };
+
+    const implementationA: IFace = {
+      useAddThree(a, b, c) {
+        return React.useMemo(() => a + b + c, [a, b, c, "add"]);
+      },
+    };
+
+    const { rerender } = render(
+      <Provider implementation={implementationA}>
+        <Component />
+      </Provider>
+    );
+
+    const implementationB: IFace = {
+      useAddThree(a, b, c) {
+        return React.useMemo(() => a * b * c, [a, b, c, "multiply"]);
+      },
+    };
+
+    expect(() => {
+      rerender(
+        <Provider implementation={implementationB}>
+          <Component />
+        </Provider>
+      );
+    }).toThrowError(
+      new Error(
+        'ImplementationProviderContext(Facade) unexpectedly received a new implementation. This is not allowed in strict mode. To disable use the option "strict: false".'
+      )
+    );
+  });
 });

@@ -181,11 +181,9 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
   /**
    * Used to create a partial context to reduce setup tedium in test scenarios.
    */
-  ImplementationProvider.__UNSAFE_Partial = (props) => {
-    return (
-      <ImplementationProvider implementation={props.implementation as any}>{props.children}</ImplementationProvider>
-    );
-  };
+  ImplementationProvider.__UNSAFE_Partial = (props) => (
+    <ImplementationProvider implementation={props.implementation as any}>{props.children}</ImplementationProvider>
+  );
   ImplementationProvider.__UNSAFE_Partial.displayName = `ImplementationProvider.__UNSAFE_Partial(${displayName})`;
 
   return [hooks, ImplementationProvider];

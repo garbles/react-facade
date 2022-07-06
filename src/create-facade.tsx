@@ -50,7 +50,7 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
   const strict = options.strict ?? true;
   const providerNotFound = Symbol();
 
-  const Context = React.createContext<BasicFacadeInterface | typeof providerNotFound>(providerNotFound);
+  const Context = React.createContext<T | typeof providerNotFound>(providerNotFound);
   Context.displayName = `ImplementationProviderContext(${displayName})`;
 
   /**

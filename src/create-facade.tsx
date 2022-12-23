@@ -3,8 +3,9 @@ import invariant from "invariant";
 
 type AnyFunc = (...args: any[]) => any;
 
-type BasicFacadeInterface = { [hookName: string]: AnyFunc };
+type BasicFacadeInterface = { [hookName: string]: AnyFunc | BasicFacadeInterface };
 
+// GABE TODO:
 type FilterNonFuncs<T> = Pick<T, { [K in keyof T]: T[K] extends AnyFunc ? K : never }[keyof T]> & {};
 
 type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ implementation: T }>> & {
@@ -53,66 +54,70 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
   const Context = React.createContext<T | typeof providerNotFound>(providerNotFound);
   Context.displayName = `ImplementationProviderContext(${displayName})`;
 
-  /**
-   * Keep track of wrapped hooks as they are called so that they always have
-   * the same reference. The hook doesn't close over the concrete implementation
-   * (because it relies on injecting through context) so it's safe to cache by name.
-   */
-  const hookCache = {} as T;
+  const createRecursiveProxy = (keyPath: string[]) => {
+    const keyCache = {} as { [key: string]: any };
 
-  const hooks = new Proxy({} as T, {
-    get<K extends keyof T & string>(_target: T, key: K): T[K] {
-      if (key in hookCache) {
-        return hookCache[key];
-      }
-
-      const hook = (...args: Parameters<T[K]>): ReturnType<T[K]> => {
+    /**
+     * Use a function as the `target` so that the proxy object is callable.
+     */
+    return new Proxy(function () {}, {
+      apply(_target: any, _thisArg: any, args: any[]) {
         const concrete = React.useContext(Context);
 
-        React.useDebugValue(key);
+        React.useDebugValue(keyPath);
 
         invariant(
           concrete !== providerNotFound,
-          `Component using "${key}" must be wrapped in provider ${Context.displayName}`
+          `Component using "${keyPath.join(".")}" must be wrapped in provider ${Context.displayName}`
         );
 
-        return concrete[key](...args);
-      };
+        let target: any = concrete;
+        let thisArg: any = undefined;
 
-      /**
-       * Do this to preserve the name of the wrapped function.
-       */
-      Object.defineProperty(hook, "name", { value: key, writable: false });
+        for (const key of keyPath) {
+          thisArg = target;
+          target = target[key];
+        }
 
-      hookCache[key] = hook;
+        return target.apply(thisArg, args);
+      },
+      get(_target: any, key: string): any {
+        if (key in keyCache) {
+          return keyCache[key];
+        }
 
-      return hook;
-    },
-    has() {
-      return false;
-    },
-    ownKeys() {
-      return [];
-    },
-    getOwnPropertyDescriptor() {
-      return undefined;
-    },
-    getPrototypeOf() {
-      return null;
-    },
-    preventExtensions() {
-      return true;
-    },
-    isExtensible() {
-      return false;
-    },
-    set() {
-      return false;
-    },
-    deleteProperty() {
-      return false;
-    },
-  });
+        const hook = createRecursiveProxy([...keyPath, key]);
+
+        keyCache[key] = hook;
+
+        return hook;
+      },
+      has() {
+        return false;
+      },
+      ownKeys() {
+        return [];
+      },
+      getOwnPropertyDescriptor() {
+        return undefined;
+      },
+      getPrototypeOf() {
+        return null;
+      },
+      preventExtensions() {
+        return true;
+      },
+      isExtensible() {
+        return false;
+      },
+      set() {
+        return false;
+      },
+      deleteProperty() {
+        return false;
+      },
+    });
+  };
 
   const ImplementationProvider: ImplementationProvider<T> = (props) => {
     const parent = React.useContext(Context);
@@ -143,7 +148,6 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
           const concrete = implementation[key];
 
           invariant(concrete !== undefined, `${Context.displayName} does not provide a hook named "${key}"`);
-          invariant(typeof concrete === "function", `Expected "${key}" to be a function but wasn't`);
 
           return concrete;
         },
@@ -186,5 +190,5 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
   );
   ImplementationProvider.__UNSAFE_Partial.displayName = `ImplementationProvider.__UNSAFE_Partial(${displayName})`;
 
-  return [hooks, ImplementationProvider];
+  return [createRecursiveProxy([]), ImplementationProvider];
 }

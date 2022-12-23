@@ -7,6 +7,10 @@ test("creates a implementation", () => {
   type IFace = {
     useAString(): string;
     useANumber(): number;
+
+    nested: {
+      useABoolean(): boolean;
+    };
   };
 
   const [hooks, ImplementationProvider] = createFacade<IFace>();
@@ -14,11 +18,13 @@ test("creates a implementation", () => {
   const Component = () => {
     const a = hooks.useAString();
     const b = hooks.useANumber();
+    const c = hooks.nested.useABoolean();
 
     return (
       <>
         <div data-testid="a-string">{a}</div>
         <div data-testid="a-number">{b}</div>
+        <div data-testid="a-boolean">{JSON.stringify(c)}</div>
       </>
     );
   };
@@ -31,6 +37,12 @@ test("creates a implementation", () => {
     useANumber() {
       return 123;
     },
+
+    nested: {
+      useABoolean() {
+        return true;
+      },
+    },
   };
 
   const { getByTestId } = render(
@@ -41,6 +53,7 @@ test("creates a implementation", () => {
 
   expect(getByTestId("a-string").innerHTML).toEqual("some string");
   expect(getByTestId("a-number").innerHTML).toEqual("123");
+  expect(getByTestId("a-boolean").innerHTML).toEqual("true");
 });
 
 test("implementations can be hooks", () => {
@@ -100,24 +113,18 @@ test("can be destructured", () => {
   expect(() => hooks.useCurrentUser).not.toThrow();
 });
 
-test("has the same name", () => {
+test("destructuring always returns the same reference", () => {
   type IFace = {
     useCurrentUser(): { id: string; name: string };
-  };
-
-  const [hooks] = createFacade<IFace>();
-
-  expect(hooks.useCurrentUser.name).toEqual("useCurrentUser");
-});
-
-test("deconstructing always returns the same reference", () => {
-  type IFace = {
-    useCurrentUser(): { id: string; name: string };
+    nested: {
+      useANestedValue(): string;
+    };
   };
 
   const [hooks] = createFacade<IFace>();
 
   expect(hooks.useCurrentUser).toBe(hooks.useCurrentUser);
+  expect(hooks.nested.useANestedValue).toBe(hooks.nested.useANestedValue);
 });
 
 describe("errors", () => {
@@ -260,14 +267,6 @@ test("allows interfaces as types for create facade as well", () => {
     )
   ).toThrowError(new Error('ImplementationProviderContext(Facade) does not provide a hook named "useD"'));
 
-  expect(() =>
-    render(
-      <Provider implementation={implementationB}>
-        <Component />
-      </Provider>
-    )
-  ).toThrowError(new Error('Expected "useD" to be a function but wasn\'t'));
-
   // @ts-expect-error
   createFacade<string>();
 });
@@ -279,9 +278,10 @@ test("hooks can reference other hooks in the implementation", () => {
   };
 
   const [hooks, Provider] = createFacade<IFace>();
+  const { useUserId } = hooks;
 
   const Component = () => {
-    const userId = hooks.useUserId();
+    const userId = useUserId();
 
     return (
       <>

@@ -5,7 +5,7 @@ type AnyFunc = (...args: any[]) => any;
 
 type BasicFacadeInterface = { [hookName: string]: AnyFunc | BasicFacadeInterface };
 
-// GABE TODO:
+// TODO: this has to be recursive
 type FilterNonFuncs<T> = Pick<T, { [K in keyof T]: T[K] extends AnyFunc ? K : never }[keyof T]> & {};
 
 type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ implementation: T }>> & {
@@ -74,9 +74,17 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
         let target: any = concrete;
         let thisArg: any = undefined;
 
+        const currentPath = [];
+
         for (const key of keyPath) {
+          currentPath.push(key);
           thisArg = target;
           target = target[key];
+
+          invariant(
+            target !== undefined,
+            `${Context.displayName} does not provide a hook named "${currentPath.join(".")}"`
+          );
         }
 
         return target.apply(thisArg, args);
@@ -122,63 +130,19 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
   const ImplementationProvider: ImplementationProvider<T> = (props) => {
     const parent = React.useContext(Context);
 
-    /**
-     * Prevent the root ImplementationProvider from being nested inside of
-     * another ImplementationProvider.
-     */
     invariant(
       parent === providerNotFound,
       `${ImplementationProvider.displayName} should not be rendered inside of another ${ImplementationProvider.displayName}.`
     );
 
-    const [implementation, setImplementation] = React.useState<T>(props.implementation);
+    const implementationRef = React.useRef<T>(props.implementation);
 
-    useSafeEffect(() => {
-      invariant(
-        !strict || implementation === props.implementation,
-        `${Context.displayName} unexpectedly received a new implementation. This is not allowed in strict mode. To disable this error use the option "strict: false".`
-      );
+    invariant(
+      !strict || implementationRef.current === props.implementation,
+      `${Context.displayName} unexpectedly received a new implementation. This is not allowed in strict mode. To disable this error use the option "strict: false".`
+    );
 
-      setImplementation(props.implementation);
-    }, [props.implementation]);
-
-    const proxy = React.useMemo(() => {
-      return new Proxy({} as T, {
-        get<K extends keyof T & string>(_target: {}, key: K): T[K] {
-          const concrete = implementation[key];
-
-          invariant(concrete !== undefined, `${Context.displayName} does not provide a hook named "${key}"`);
-
-          return concrete;
-        },
-        has(_target: {}, key: string) {
-          return Reflect.has(implementation, key);
-        },
-        ownKeys(_target: {}) {
-          return Reflect.ownKeys(implementation);
-        },
-        getOwnPropertyDescriptor(_target: {}, key: string) {
-          return Reflect.getOwnPropertyDescriptor(implementation, key);
-        },
-        getPrototypeOf() {
-          return Reflect.getPrototypeOf(implementation);
-        },
-        preventExtensions() {
-          return true;
-        },
-        isExtensible() {
-          return false;
-        },
-        set() {
-          return false;
-        },
-        deleteProperty() {
-          return false;
-        },
-      });
-    }, [implementation]);
-
-    return <Context.Provider value={proxy}>{props.children}</Context.Provider>;
+    return <Context.Provider value={props.implementation}>{props.children}</Context.Provider>;
   };
   ImplementationProvider.displayName = `ImplementationProvider(${displayName})`;
 

@@ -248,7 +248,7 @@ Mocking at the module level has the notable downside that type safety is optiona
 
 ### Can I use this with plain JavaScript?
 
-It's ~2021~ 2022, bud. Why aren't you writing TypeScript?
+It's ~2021~ ~2022~ 2023, bud. Why aren't you writing TypeScript?
 
 It is _really_ important that this library is used with TypeScript. It's a trick to use a Proxy object in place of the real implementation when calling `createFacade`, so nothing stops you from calling a function that does not exist. Especially bad would be destructuring so your fake hook could be used elsewhere in the program.
 

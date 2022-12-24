@@ -1,12 +1,32 @@
 import React from "react";
 import invariant from "invariant";
 
-type AnyFunc = (...args: any[]) => any;
+type AnyFunc = Function | ((...args: any[]) => any);
 
-type BasicFacadeInterface = { [hookName: string]: AnyFunc | BasicFacadeInterface };
+type BasicFacadeInterface = { [hookName: string]: Function | BasicFacadeInterface };
 
+/**
+ * This type is used to filter out non-functions and objects from the interface.
+ */
+// prettier-ignore
+type AllObjectAndFunctionKeys<T> = {
+  [K in keyof T]: 
+    T[K] extends AnyFunc ? K :
+    T[K] extends object ? K :
+    never
+}[keyof T];
+
+/**
+ * This type recurses down through the interface and filters out non-functions and objects.
+ * `AllObjectAndFunctionKeys` is doing the heavy lifting here because the keys are defacto
+ * removed from the interface.
+ */
+// prettier-ignore
 type FilterNonFuncs<T> = {
-  [K in keyof T]: T[K] extends AnyFunc ? T[K] : T[K] extends object ? FilterNonFuncs<T[K]> : undefined;
+  [P in AllObjectAndFunctionKeys<T>]:
+    T[P] extends AnyFunc ? T[P] :
+    T[P] extends object ? Readonly<FilterNonFuncs<T[P]>> :
+    never;
 };
 
 type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ implementation: T }>> & {
@@ -18,7 +38,8 @@ type Options = { displayName: string; strict: boolean };
 /**
  * This function interface is present so that when a "BasicFacadeInterface" is provided,
  * the resulting hook object will be typed as `Readonly<T>` which is much easier to read
- * than something with `Pick` (see below).
+ * than FilterNonFuncs<T>. That is, if you provide an interface without keys that need to be
+ * filtered out, the resulting hook object will be typed as the much more readable `Readonly<T>`.
  */
 export function createFacade<T extends BasicFacadeInterface>(
   options?: Partial<Options>
@@ -26,13 +47,9 @@ export function createFacade<T extends BasicFacadeInterface>(
 
 /**
  * When an interface is provided for `T`, for example `interface A { ... }`,
- * and/or _any_ of the keys in `T` are not functions, we fallback to this interface
- * which uses `Pick` to filter out non-hooks. It's a little harder to read than
+ * and/or _any_ of the keys in `T` are not functions or objects, we fallback to this
+ * which uses `FilterNonFuncs` to filter out non-hooks. It's a little harder to read than
  * the above, but without it we could not support interfaces.
- *
- * TODO: Is there a way to constrain an interface without this? That is, is there
- * something we could extend `T` off of so that any interface provided has only
- * functions as values? `T extends BasicFacadeInterface` does not work.
  */
 export function createFacade<T extends object>(
   options?: Partial<Options>
@@ -52,8 +69,8 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
   const Context = React.createContext<T | typeof providerNotFound>(providerNotFound);
   Context.displayName = `ImplementationProviderContext(${displayName})`;
 
-  const createRecursiveProxy = (keyPath: string[]) => {
-    const keyCache = {} as { [key: string]: any };
+  const createRecursiveProxy = <U,>(keyPath: string[]) => {
+    const keyCache = {} as { [K in keyof U]: U[K] };
 
     /**
      * Use a function as the `target` so that the proxy object is callable.
@@ -92,16 +109,18 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
 
         return target.apply(thisArg, args);
       },
-      get(_target: any, key: string): any {
+      get(_target: any, key0: string): any {
+        const key = key0 as keyof U & string;
+
         if (key in keyCache) {
           return keyCache[key];
         }
 
-        const hook = createRecursiveProxy([...keyPath, key]);
+        const next = createRecursiveProxy([...keyPath, key]);
 
-        keyCache[key] = hook;
+        keyCache[key] = next;
 
-        return hook;
+        return next;
       },
       has() {
         return false;
@@ -157,5 +176,5 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
   );
   ImplementationProvider.__UNSAFE_Partial.displayName = `ImplementationProvider.__UNSAFE_Partial(${displayName})`;
 
-  return [createRecursiveProxy([]), ImplementationProvider];
+  return [createRecursiveProxy<T>([]), ImplementationProvider];
 }

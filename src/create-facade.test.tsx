@@ -223,26 +223,32 @@ test("various type checking errors", () => {
 
     nested: {
       useF: boolean;
+      useG(): boolean;
     };
+  };
+
+  type CInterface = {
+    useH(): string;
+    useI(): number;
   };
 
   const [hooksA] = createFacade<AInterface>();
   const [hooksB, Provider] = createFacade<BInterface>();
+  const [hooksC] = createFacade<CInterface>();
 
   // @ts-expect-error
-  const hook1: number = hooksA.useA;
-
+  hooksA.useA;
   // @ts-expect-error
-  const hook2: string = hooksB.useD;
+  hooksB.nested.useF;
 
-  // @ts-expect-error
-  const hook3: boolean = hooksB.nested.useF;
+  hooksB.nested.useG;
 
   /**
    * The inner proxy object throws an error here.
    */
   const Component = () => {
-    (hook2 as any)();
+    // @ts-expect-error
+    hooksB.useD();
 
     return null;
   };
@@ -260,12 +266,14 @@ test("various type checking errors", () => {
     },
     nested: {
       useF: false,
+      useG() {
+        return true;
+      },
     },
   };
 
   expect(() =>
     render(
-      // @ts-expect-error
       <Provider implementation={implementationB}>
         <Component />
       </Provider>

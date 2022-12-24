@@ -1,9 +1,15 @@
 import { test, describe, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import React from "react";
-import { createFacade } from "./create-facade";
+import { createFacade, ImplementationProvider } from "./create-facade";
 
-test("creates a implementation", () => {
+const createWrapper =
+  <I extends object>(impl: I, Provider: ImplementationProvider<I>) =>
+  (props) => {
+    return <Provider implementation={impl}>{props.children}</Provider>;
+  };
+
+test("creates an implementation", () => {
   type IFace = {
     useAString(): string;
     useANumber(): number;
@@ -13,23 +19,7 @@ test("creates a implementation", () => {
     };
   };
 
-  const [hooks, ImplementationProvider] = createFacade<IFace>();
-
-  const Component = () => {
-    const a = hooks.useAString();
-    const b = hooks.useANumber();
-    const c = hooks.nested.useABoolean();
-
-    return (
-      <>
-        <div data-testid="a-string">{a}</div>
-        <div data-testid="a-number">{b}</div>
-        <div data-testid="a-boolean">{JSON.stringify(c)}</div>
-      </>
-    );
-  };
-
-  const implementation = {
+  const impl = {
     useAString() {
       return "some string";
     },
@@ -45,37 +35,26 @@ test("creates a implementation", () => {
     },
   };
 
-  const { getByTestId } = render(
-    <ImplementationProvider implementation={implementation}>
-      <Component />
-    </ImplementationProvider>
-  );
+  const [hooks, Provider] = createFacade<IFace>();
+  const wrapper = createWrapper(impl, Provider);
 
-  expect(getByTestId("a-string").innerHTML).toEqual("some string");
-  expect(getByTestId("a-number").innerHTML).toEqual("123");
-  expect(getByTestId("a-boolean").innerHTML).toEqual("true");
+  const { result: resultA } = renderHook(() => hooks.useAString(), { wrapper });
+  const { result: resultB } = renderHook(() => hooks.useANumber(), { wrapper });
+  const { result: resultC } = renderHook(() => hooks.nested.useABoolean(), { wrapper });
+
+  expect(resultA.current).toEqual("some string");
+  expect(resultB.current).toEqual(123);
+  expect(resultC.current).toEqual(true);
 });
 
-test("implementations can be hooks", () => {
+test("implementations can use other hooks", () => {
   vi.useFakeTimers();
 
   type IFace = {
     useCounter(interval: number): number;
   };
 
-  const [hooks, ImplementationProvider] = createFacade<IFace>();
-
-  const Component = () => {
-    const count = hooks.useCounter(100);
-
-    return (
-      <>
-        <div data-testid="count">{count}</div>
-      </>
-    );
-  };
-
-  const implementation: IFace = {
+  const impl: IFace = {
     useCounter(interval: number) {
       const [count, increment] = React.useReducer((count) => count + 1, 0);
 
@@ -88,29 +67,61 @@ test("implementations can be hooks", () => {
     },
   };
 
-  const { getByTestId } = render(
-    <ImplementationProvider implementation={implementation}>
-      <Component />
-    </ImplementationProvider>
-  );
+  const [hooks, Provider] = createFacade<IFace>();
+  const wrapper = createWrapper(impl, Provider);
 
-  expect(getByTestId("count").innerHTML).toEqual("0");
+  const { result } = renderHook(() => hooks.useCounter(1000), { wrapper });
+
+  expect(result.current).toEqual(0);
 
   act(() => {
     vi.advanceTimersByTime(3000);
   });
 
-  expect(getByTestId("count").innerHTML).toEqual("30");
+  expect(result.current).toEqual(3);
 });
 
-test("can be destructured", () => {
+describe("using other contexts", () => {
   type IFace = {
-    useCurrentUser(): { id: string; name: string };
+    useAString(): string;
   };
 
-  const [hooks] = createFacade<IFace>();
+  const [hooks, Provider] = createFacade<IFace>();
+  const SomeStringContext = React.createContext("some string");
 
-  expect(() => hooks.useCurrentUser).not.toThrow();
+  const impl: IFace = {
+    useAString() {
+      return React.useContext(SomeStringContext);
+    },
+  };
+
+  const wrapper = createWrapper(impl, Provider);
+
+  test("implementations can use other contexts", () => {
+    const { result } = renderHook(() => hooks.useAString(), { wrapper });
+
+    expect(result.current).toEqual("some string");
+  });
+
+  test("the order of the context does not matter as long as the implementation is called inside both.", () => {
+    const wrapperWithContextOutside = (props: any) => {
+      return <SomeStringContext.Provider value="some other string">{wrapper(props)}</SomeStringContext.Provider>;
+    };
+
+    const { result: resultA } = renderHook(() => hooks.useAString(), { wrapper: wrapperWithContextOutside });
+
+    expect(resultA.current).toEqual("some other string");
+
+    const wrapperWithContextInside = (props: any) => {
+      return wrapper({
+        children: <SomeStringContext.Provider value="yet another string">{props.children}</SomeStringContext.Provider>,
+      });
+    };
+
+    const { result: resultB } = renderHook(() => hooks.useAString(), { wrapper: wrapperWithContextInside });
+
+    expect(resultB.current).toEqual("yet another string");
+  });
 });
 
 test("destructuring always returns the same reference", () => {
@@ -146,18 +157,7 @@ describe("errors", () => {
 
     const [hooks] = createFacade<IFace>({ displayName: "Oopsie" });
 
-    const Component = () => {
-      const user = hooks.useCurrentUser();
-
-      return (
-        <>
-          <div data-testid="id">{user.id}</div>
-          <div data-testid="name">{user.name}</div>
-        </>
-      );
-    };
-
-    expect(() => render(<Component />)).toThrowError(
+    expect(() => renderHook(() => hooks.useCurrentUser())).toThrowError(
       new Error('Component using "useCurrentUser" must be wrapped in provider ImplementationProviderContext(Oopsie)')
     );
   });
@@ -167,40 +167,26 @@ describe("errors", () => {
       useCurrentUser(): { id: string; name: string };
     };
 
-    const [hooks, ImplementationProvider] = createFacade<IFace>({ displayName: "Oopsie" });
+    const impl = {} as any;
 
-    const Component = () => {
-      const user = hooks.useCurrentUser();
+    const [hooks, Provider] = createFacade<IFace>({ displayName: "Oopsie" });
+    const wrapper = createWrapper(impl, Provider);
 
-      return (
-        <>
-          <div data-testid="id">{user.id}</div>
-          <div data-testid="name">{user.name}</div>
-        </>
-      );
-    };
-
-    const implementation = {} as any;
-
-    expect(() =>
-      render(
-        <ImplementationProvider implementation={implementation}>
-          <Component />
-        </ImplementationProvider>
-      )
-    ).toThrowError(new Error('ImplementationProviderContext(Oopsie) does not provide a hook named "useCurrentUser"'));
+    expect(() => renderHook(() => hooks.useCurrentUser(), { wrapper })).toThrowError(
+      new Error('ImplementationProviderContext(Oopsie) does not provide a hook named "useCurrentUser"')
+    );
   });
 
   test("throws an error if ImplementationProvider is inside another ImplementationProvider", () => {
     type IFace = {};
 
-    const [hooks, ImplementationProvider] = createFacade<IFace>({ displayName: "NestedRoots" });
+    const [hooks, Provider] = createFacade<IFace>({ displayName: "NestedRoots" });
 
     expect(() =>
       render(
-        <ImplementationProvider implementation={{}}>
-          <ImplementationProvider implementation={{}}></ImplementationProvider>
-        </ImplementationProvider>
+        <Provider implementation={{}}>
+          <Provider implementation={{}}></Provider>
+        </Provider>
       )
     ).toThrowError(
       new Error(
@@ -210,78 +196,59 @@ describe("errors", () => {
   });
 });
 
-test("various type checking errors", () => {
-  interface AInterface {
-    useA: number;
+test("type error when member is not a function", () => {
+  interface IFace {
+    useA: string;
     useB(): number;
-    useC(): string;
+
+    nested: {
+      useC: boolean;
+      useD(): boolean;
+    };
   }
 
-  type BInterface = {
-    useD: string;
-    useE(): number;
-
-    nested: {
-      useF: boolean;
-      useG(): boolean;
-    };
-  };
-
-  type CInterface = {
-    useH(): string;
-    useI(): number;
-  };
-
-  const [hooksA] = createFacade<AInterface>();
-  const [hooksB, Provider] = createFacade<BInterface>();
-  const [hooksC] = createFacade<CInterface>();
+  const [hooks] = createFacade<IFace>();
 
   // @ts-expect-error
-  hooksA.useA;
+  expect(typeof hooks.useA).toBe("function");
+
+  // not an error
+  expect(typeof hooks.useB).toBe("function");
+
   // @ts-expect-error
-  hooksB.nested.useF;
+  expect(typeof hooks.nested.useC).toBe("function");
 
-  hooksB.nested.useG;
+  // not an error
+  expect(typeof hooks.nested.useD).toBe("function");
+});
 
-  /**
-   * The inner proxy object throws an error here.
-   */
-  const Component = () => {
-    // @ts-expect-error
-    hooksB.useD();
-
-    return null;
-  };
-
-  const implementationA: Partial<BInterface> = {
-    useE() {
-      return 12;
-    },
-  };
-
-  const implementationB: BInterface = {
-    useD: "400",
-    useE() {
-      return 12;
-    },
-    nested: {
-      useF: false,
-      useG() {
-        return true;
-      },
-    },
-  };
-
-  expect(() =>
-    render(
-      <Provider implementation={implementationB}>
-        <Component />
-      </Provider>
-    )
-  ).toThrowError(new Error('ImplementationProviderContext(Facade) provides a value "useD" but it is not a function.'));
-
+test("type error when interface is not an object", () => {
   // @ts-expect-error
   createFacade<string>();
+});
+
+test("various type checking errors", () => {
+  type IFace = {
+    useA: string;
+  };
+
+  const impl: IFace = {
+    useA: "400",
+  };
+
+  const [hooks, Provider] = createFacade<IFace>();
+
+  const wrapper = createWrapper(impl, Provider);
+
+  expect(() =>
+    renderHook(
+      () => {
+        // @ts-expect-error
+        hooks.useA();
+      },
+      { wrapper }
+    )
+  ).toThrowError(new Error('ImplementationProviderContext(Facade) provides a value "useA" but it is not a function.'));
 });
 
 test("hooks can reference other hooks in the implementation", () => {
@@ -293,17 +260,7 @@ test("hooks can reference other hooks in the implementation", () => {
   const [hooks, Provider] = createFacade<IFace>();
   const { useUserId } = hooks;
 
-  const Component = () => {
-    const userId = useUserId();
-
-    return (
-      <>
-        <div data-testid="id">{userId}</div>
-      </>
-    );
-  };
-
-  const implementation = {
+  const impl = {
     useCurrentUser() {
       return {
         id: "12345",
@@ -317,13 +274,11 @@ test("hooks can reference other hooks in the implementation", () => {
     },
   };
 
-  const { getByTestId } = render(
-    <Provider implementation={implementation}>
-      <Component />
-    </Provider>
-  );
+  const wrapper = createWrapper(impl, Provider);
 
-  expect(getByTestId("id").textContent).toEqual("12345");
+  const { result } = renderHook(() => useUserId(), { wrapper });
+
+  expect(result.current).toEqual("12345");
 });
 
 describe("strict mode", () => {
@@ -333,6 +288,18 @@ describe("strict mode", () => {
     };
 
     const [hooks, Provider] = createFacade<IFace>({ strict: false });
+
+    const implA: IFace = {
+      useAddThree(a, b, c) {
+        return React.useMemo(() => a + b + c, [a, b, c, "add"]);
+      },
+    };
+
+    const implB: IFace = {
+      useAddThree(a, b, c) {
+        return React.useMemo(() => a * b * c, [a, b, c, "multiply"]);
+      },
+    };
 
     const Component = () => {
       const amount = hooks.useAddThree(1, 3, 5);
@@ -344,28 +311,16 @@ describe("strict mode", () => {
       );
     };
 
-    const implementationA: IFace = {
-      useAddThree(a, b, c) {
-        return React.useMemo(() => a + b + c, [a, b, c, "add"]);
-      },
-    };
-
     const { getByTestId, rerender } = render(
-      <Provider implementation={implementationA}>
+      <Provider implementation={implA}>
         <Component />
       </Provider>
     );
 
     expect(getByTestId("amount").textContent).toEqual("9");
 
-    const implementationB: IFace = {
-      useAddThree(a, b, c) {
-        return React.useMemo(() => a * b * c, [a, b, c, "multiply"]);
-      },
-    };
-
     rerender(
-      <Provider implementation={implementationB}>
+      <Provider implementation={implB}>
         <Component />
       </Provider>
     );
@@ -378,39 +333,34 @@ describe("strict mode", () => {
       useAddThree(a: number, b: number, c: number): number;
     };
 
-    const [hooks, Provider] = createFacade<IFace>({ strict: true });
-
-    const Component = () => {
-      const amount = hooks.useAddThree(1, 3, 5);
-
-      return (
-        <>
-          <div data-testid="amount">{amount}</div>
-        </>
-      );
-    };
-
-    const implementationA: IFace = {
+    const implA: IFace = {
       useAddThree(a, b, c) {
         return React.useMemo(() => a + b + c, [a, b, c, "add"]);
       },
     };
 
-    const { rerender } = render(
-      <Provider implementation={implementationA}>
-        <Component />
-      </Provider>
-    );
-
-    const implementationB: IFace = {
+    const implB: IFace = {
       useAddThree(a, b, c) {
         return React.useMemo(() => a * b * c, [a, b, c, "multiply"]);
       },
     };
 
+    const [hooks, Provider] = createFacade<IFace>({ strict: true });
+
+    const Component = () => {
+      hooks.useAddThree(1, 3, 5);
+      return null;
+    };
+
+    const { rerender } = render(
+      <Provider implementation={implA}>
+        <Component />
+      </Provider>
+    );
+
     expect(() => {
       rerender(
-        <Provider implementation={implementationB}>
+        <Provider implementation={implB}>
           <Component />
         </Provider>
       );

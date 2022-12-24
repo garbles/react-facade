@@ -34,7 +34,7 @@ export function UserProfile() {
 }
 ```
 
-The developer of this component may not care about the implementation of `useCurrentUser`, but the tests sure do! If under the hood `useCurrentUser` calls the react-redux `useSelector`, then `UserProfile` depends directly on a global Redux store. Moreover, any component using `UserProfile` also has this dependency. The coupling between the store and component tree is hard-coded by this hook. Yikes! And yet this is not an uncommon problem. 🙃
+The developer of this component may not care about the implementation of `useCurrentUser`, but the tests sure do! If under the hood `useCurrentUser` calls the react-redux `useSelector`, then `UserProfile` depends directly on a global Redux store. Moreover, any component using `UserProfile` also has this dependency. The coupling between the store and component tree is hard-coded by this hook. Yikes!
 
 Consider the same problem where the _implementation_ can be completely ignored and replaced by dependency injection. We define the same interface using `createFacade`,
 
@@ -247,8 +247,6 @@ npm install react-facade
 Mocking at the module level has the notable downside that type safety is optional. The onus is on the developer to ensure that the mock matches the actual interface. While stubbing with a _static_ language is dangerous enough because it removes critical interactions between units of code, a _dynamic_ language is even worse because changes to the real implementation interface (without modifications to the stub) can result in runtime type errors in production. Choosing to forgo the type check means that you might as well be writing JavaScript.
 
 ### Can I use this with plain JavaScript?
-
-It's ~2021~ ~2022~ 2023, bud. Why aren't you writing TypeScript?
 
 It is _really_ important that this library is used with TypeScript. It's a trick to use a Proxy object in place of the real implementation when calling `createFacade`, so nothing stops you from calling a function that does not exist. Especially bad would be destructuring so your fake hook could be used elsewhere in the program.
 

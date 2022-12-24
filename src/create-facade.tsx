@@ -29,7 +29,7 @@ type FilterNonFuncs<T> = {
     never;
 };
 
-type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ implementation: T }>> & {
+export type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ implementation: T }>> & {
   __UNSAFE_Partial: React.ComponentType<React.PropsWithChildren<{ implementation: Partial<T> }>>;
 };
 

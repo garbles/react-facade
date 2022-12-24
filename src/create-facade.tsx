@@ -5,17 +5,15 @@ type AnyFunc = (...args: any[]) => any;
 
 type BasicFacadeInterface = { [hookName: string]: AnyFunc | BasicFacadeInterface };
 
-// TODO: this has to be recursive
-type FilterNonFuncs<T> = Pick<T, { [K in keyof T]: T[K] extends AnyFunc ? K : never }[keyof T]> & {};
+type FilterNonFuncs<T> = {
+  [K in keyof T]: T[K] extends AnyFunc ? T[K] : T[K] extends object ? FilterNonFuncs<T[K]> : undefined;
+};
 
 type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ implementation: T }>> & {
   __UNSAFE_Partial: React.ComponentType<React.PropsWithChildren<{ implementation: Partial<T> }>>;
 };
 
 type Options = { displayName: string; strict: boolean };
-
-const isBrowser = typeof window !== "undefined" && !!window.document?.createElement;
-const useSafeEffect = isBrowser ? React.useLayoutEffect : React.useEffect;
 
 /**
  * This function interface is present so that when a "BasicFacadeInterface" is provided,
@@ -86,6 +84,11 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
             `${Context.displayName} does not provide a hook named "${currentPath.join(".")}"`
           );
         }
+
+        invariant(
+          typeof target === "function",
+          `${Context.displayName} provides a value "${currentPath.join(".")}" but it is not a function.`
+        );
 
         return target.apply(thisArg, args);
       },

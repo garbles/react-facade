@@ -210,62 +210,67 @@ describe("errors", () => {
   });
 });
 
-test("allows interfaces as types for create facade as well", () => {
+test("various type checking errors", () => {
   interface AInterface {
-    useX(): number;
-  }
-
-  interface BInterface {
     useA: number;
     useB(): number;
     useC(): string;
   }
 
-  type CInterface = {
-    useD: number;
+  type BInterface = {
+    useD: string;
     useE(): number;
+
+    nested: {
+      useF: boolean;
+    };
   };
 
   const [hooksA] = createFacade<AInterface>();
-  const [hooksB] = createFacade<BInterface>();
-  const [hooksC, Provider] = createFacade<CInterface>();
+  const [hooksB, Provider] = createFacade<BInterface>();
 
   // @ts-expect-error
-  const hook = hooksB.useA;
+  const hook1: number = hooksA.useA;
 
-  // @ts-expect-error;
-  const hook2 = hooksC.useD;
+  // @ts-expect-error
+  const hook2: string = hooksB.useD;
+
+  // @ts-expect-error
+  const hook3: boolean = hooksB.nested.useF;
 
   /**
    * The inner proxy object throws an error here.
    */
-
   const Component = () => {
-    hook2();
+    (hook2 as any)();
 
     return null;
   };
 
-  const implementationA = {
+  const implementationA: Partial<BInterface> = {
     useE() {
       return 12;
     },
   };
 
-  const implementationB = {
-    useD: 400,
+  const implementationB: BInterface = {
+    useD: "400",
     useE() {
       return 12;
+    },
+    nested: {
+      useF: false,
     },
   };
 
   expect(() =>
     render(
-      <Provider implementation={implementationA}>
+      // @ts-expect-error
+      <Provider implementation={implementationB}>
         <Component />
       </Provider>
     )
-  ).toThrowError(new Error('ImplementationProviderContext(Facade) does not provide a hook named "useD"'));
+  ).toThrowError(new Error('ImplementationProviderContext(Facade) provides a value "useD" but it is not a function.'));
 
   // @ts-expect-error
   createFacade<string>();

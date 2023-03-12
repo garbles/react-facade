@@ -1,12 +1,14 @@
 # React Facade
 
+Write components with placeholders for hooks.
+
 An experimental 2kb library that uses [Proxy](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy) and TypeScript to create a strongly typed [facade](https://en.wikipedia.org/wiki/Facade_pattern) for your React hooks.
 
 - **Dependency inversion between components and hooks:** Build components that rely on hooks that do not have a particular implementation.
 - **Works with all of your existing hooks:** Extract hooks to the top level of your program and replace them with a facade.
 - **Simplified component testing:** You were already testing your hooks anyway (right?), so why test them again? Focus on rendering outcomes rather than bungling around with a cumbersome setup for test cases.
 
-This library effectively allows you to write components with placeholders for hooks. Their implementation is injected via React context so that they can be changed between views or testing. It is dependency injection for hooks that does not require higher-order functions/Components.
+The hooks implementation is injected via React context so that they can be changed between views or testing. It is dependency injection for hooks that does not require higher-order functions/Components.
 
 ## Example
 
@@ -120,10 +122,10 @@ test("some thing", () => {
   };
 
   const result = render(
-    // What is `__UNSAFE_Partial`? See API section
-    <ImplementationProvider.__UNSAFE_Partial implementation={implementation}>
+    // What is `__UNSAFE_Test_Partial`? See API section
+    <ImplementationProvider.__UNSAFE_Test_Partial implementation={implementation}>
       <UserProfile />
-    </ImplementationProvider.__UNSAFE_Partial>
+    </ImplementationProvider.__UNSAFE_Test_Partial>
   );
 
   // ...
@@ -164,9 +166,9 @@ const errorImplementation = {
 
 test("shows the loading spinner", () => {
   const result = render(
-    <ImplementationProvider.__UNSAFE_Partial implementation={loadingImplementation}>
+    <ImplementationProvider.__UNSAFE_Test_Partial implementation={loadingImplementation}>
       <Post id={id} />
-    </ImplementationProvider.__UNSAFE_Partial>
+    </ImplementationProvider.__UNSAFE_Test_Partial>
   );
 
   // ...
@@ -174,9 +176,9 @@ test("shows the loading spinner", () => {
 
 test("displays an error", () => {
   const result = render(
-    <ImplementationProvider.__UNSAFE_Partial implementation={errorImplementation}>
+    <ImplementationProvider.__UNSAFE_Test_Partial implementation={errorImplementation}>
       <Post id={id} />
-    </ImplementationProvider.__UNSAFE_Partial>
+    </ImplementationProvider.__UNSAFE_Test_Partial>
   );
 
   // ...
@@ -188,8 +190,10 @@ test("displays an error", () => {
 ### `createFacade`
 
 ```ts
+type Wrapper = React.JSXElementConstructor<{ children: React.ReactElement }>;
+
 function createFacade<T>(
-  options?: Partial<{ displayName: string; strict: boolean }>
+  options?: Partial<{ displayName: string; strict: boolean; wrapper: Wrapper }>
 ): [Proxy<T>, ImplementationProvider<T>];
 ```
 
@@ -199,10 +203,11 @@ The `ImplementationProvider` does not collide with other `ImplementationProvider
 
 #### Options
 
-| option      | type    | default  | details                                                                 |
-| ----------- | ------- | -------- | ----------------------------------------------------------------------- |
-| displayName | string  | "Facade" | The displayName for debugging with React Devtools                       |
-| strict      | boolean | true     | When `true` does not allow the implementation to change between renders |
+| option      | type     | default                    | details                                                                  |
+| ----------- | -------- | -------------------------- | ------------------------------------------------------------------------ |
+| displayName | string   | "Facade"                   | The displayName for debugging with React Devtools .                      |
+| strict      | boolean  | true                       | When `true` does not allow the implementation to change between renders. |
+| wrapper     | React.FC | ({ children }) => children | A wrapper component that can be used to wrap the ImplementationProvider. |
 
 ### `ImplementationProvider<T>`
 
@@ -224,19 +229,19 @@ return (
 );
 ```
 
-### `ImplementationProvider<T>.__UNSAFE_Partial`
+### `ImplementationProvider<T>.__UNSAFE_Test_Partial`
 
 Used for partially implementing the interface when you don't need to implement the whole thing but still want it to type-check (tests?). For the love of God, please do not use this outside of tests...
 
 ```tsx
-<ImplementationProvider.__UNSAFE_Partial implementation={partialImplementation}>
+<ImplementationProvider.__UNSAFE_Test_Partial implementation={partialImplementation}>
   <UserProfile />
-</ImplementationProvider.__UNSAFE_Partial>
+</ImplementationProvider.__UNSAFE_Test_Partial>
 ```
 
 ## Installing
 
-```bash
+```
 npm install react-facade
 ```
 

@@ -122,6 +122,27 @@ describe("using other contexts", () => {
 
     expect(resultB.current).toEqual("yet another string");
   });
+
+  test("using the wrapper option", () => {
+    const WrapperWithContextOutside = (props: any) => {
+      return <SomeStringContext.Provider value="some other string">{props.children}</SomeStringContext.Provider>;
+    };
+
+    const [hooks, Provider] = createFacade<IFace>({ wrapper: WrapperWithContextOutside });
+    const SomeStringContext = React.createContext("some string");
+
+    const impl: IFace = {
+      useAString() {
+        return React.useContext(SomeStringContext);
+      },
+    };
+
+    const wrapper = createWrapper(impl, Provider);
+
+    const { result: resultA } = renderHook(() => hooks.useAString(), { wrapper });
+
+    expect(resultA.current).toEqual("some other string");
+  });
 });
 
 test("destructuring always returns the same reference", () => {

@@ -29,11 +29,31 @@ type FilterNonFuncs<T> = {
     never;
 };
 
+type Wrapper = React.JSXElementConstructor<{ children: React.ReactElement }>;
+
 export type ImplementationProvider<T> = React.ComponentType<React.PropsWithChildren<{ implementation: T }>> & {
-  __UNSAFE_Partial: React.ComponentType<React.PropsWithChildren<{ implementation: Partial<T> }>>;
+  __UNSAFE_Test_Partial: React.ComponentType<React.PropsWithChildren<{ implementation: Partial<T> }>>;
 };
 
-type Options = { displayName: string; strict: boolean };
+type Options = {
+  /**
+   * The displayName for debugging with React Devtools
+   * @default Facade
+   */
+  displayName: string;
+  /**
+   * When `true` does not allow the implementation to change between renders. Improves performance.
+   * @default true
+   */
+  strict: boolean;
+  /**
+   * A wrapper component that can be used to wrap the ImplementationProvider.
+   * @default ({ children }) => children
+   */
+  wrapper: Wrapper;
+};
+
+const nullWrapper: Wrapper = ({ children }) => children;
 
 /**
  * This function interface is present so that when a "BasicFacadeInterface" is provided,
@@ -64,6 +84,7 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
 
   const displayName = options.displayName ?? "Facade";
   const strict = options.strict ?? true;
+  const Wrapper = options.wrapper ?? nullWrapper;
   const providerNotFound = Symbol();
 
   const Context = React.createContext<T | typeof providerNotFound>(providerNotFound);
@@ -164,17 +185,21 @@ export function createFacade(options: Partial<Options> = {}): [Readonly<{}>, Imp
       `${Context.displayName} unexpectedly received a new implementation. This is not allowed in strict mode. To disable this error use the option "strict: false".`
     );
 
-    return <Context.Provider value={props.implementation}>{props.children}</Context.Provider>;
+    return (
+      <Wrapper>
+        <Context.Provider value={props.implementation}>{props.children}</Context.Provider>
+      </Wrapper>
+    );
   };
   ImplementationProvider.displayName = `ImplementationProvider(${displayName})`;
 
   /**
    * Used to create a partial context to reduce setup tedium in test scenarios.
    */
-  ImplementationProvider.__UNSAFE_Partial = (props) => (
+  ImplementationProvider.__UNSAFE_Test_Partial = (props) => (
     <ImplementationProvider implementation={props.implementation as any}>{props.children}</ImplementationProvider>
   );
-  ImplementationProvider.__UNSAFE_Partial.displayName = `ImplementationProvider.__UNSAFE_Partial(${displayName})`;
+  ImplementationProvider.__UNSAFE_Test_Partial.displayName = `ImplementationProvider.__UNSAFE_Test_Partial(${displayName})`;
 
   return [createRecursiveProxy<T>([]), ImplementationProvider];
 }
